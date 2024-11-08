@@ -1,0 +1,99 @@
+services:
+  mongo:
+    image: mongo:latest
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
+    ports:
+      - ${MONGODB_LOCAL_PORT}:${MONGODB_DOCKER_PORT}
+    volumes:
+      - ./mongodb:/data/db
+
+  redis:
+    image: redis:latest
+    ports:
+      - ${REDIS_LOCAL_PORT}:${REDIS_DOCKER_PORT}
+
+  zookeeper:
+    image: zookeeper:latest
+    ports:
+      - ${ZOOKEEPER_LOCAL_PORT}:${ZOOKEEPER_DOCKER_PORT}
+
+  task-queue:
+    depends_on:
+      - mongo
+      - redis
+      - zookeeper
+    environment:
+      - MONGODB_USER=${MONGODB_USER}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - MONGODB_HOST=${MONGODB_HOST}
+      - MONGODB_DOCKER_PORT=${MONGODB_DOCKER_PORT}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_DOCKER_PORT=${REDIS_DOCKER_PORT}
+      - ZOOKEEPER_HOST=${ZOOKEEPER_HOST}
+      - ZOOKEEPER_DOCKER_PORT=${ZOOKEEPER_DOCKER_PORT}
+      - NODE_TASK_QUEUE_HOST=${NODE_TASK_QUEUE_HOST}
+      - NODE_TASK_QUEUE_LOCAL_PORT=${NODE_TASK_QUEUE_LOCAL_PORT}
+    build:
+      context: ./task-queue
+      dockerfile: Dockerfile
+    volumes:
+      - ./task-queue:/usr/src/task-queue
+      - /usr/src/task-queue/node_modules
+
+  server:
+    depends_on:
+      - mongo
+      - redis
+      - zookeeper
+    environment:
+      - MONGODB_USER=${MONGODB_USER}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - MONGODB_HOST=${MONGODB_HOST}
+      - MONGODB_DOCKER_PORT=${MONGODB_DOCKER_PORT}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_DOCKER_PORT=${REDIS_DOCKER_PORT}
+      - ZOOKEEPER_HOST=${ZOOKEEPER_HOST}
+      - ZOOKEEPER_DOCKER_PORT=${ZOOKEEPER_DOCKER_PORT}
+      - NODE_SERVER_HOST=${NODE_SERVER_HOST}
+      - NODE_SERVER_LOCAL_PORT=${NODE_SERVER_LOCAL_PORT}
+      - NODE_TASK_QUEUE_BASE_URL=${NODE_TASK_QUEUE_BASE_URL}
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    volumes:
+      - ./server:/usr/src/server
+      - /usr/src/server/node_modules
+    deploy:
+      mode: replicated
+      replicas: 3
+
+  nginx:
+    depends_on:
+      - server
+    environment:
+      - NODE_SERVER_LOCAL_PORT=${NODE_SERVER_LOCAL_PORT}
+      - VITE_APP_DOCKER_PORT=${VITE_APP_DOCKER_PORT}
+      - NGINX_DOCKER_PORT=${NGINX_DOCKER_PORT}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - ${NGINX_LOCAL_PORT}:${NGINX_DOCKER_PORT}
+
+  client:
+    depends_on:
+      - nginx
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    volumes:
+      - ./client:/usr/src/client
+      - /usr/src/client/node_modules
+    ports:
+      - ${VITE_APP_LOCAL_PORT}:${VITE_APP_DOCKER_PORT}
